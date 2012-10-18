@@ -1,0 +1,27 @@
+sms Package
+===========
+
+:mod:`daemon` Module
+--------------------
+
+.. automodule:: adminsms.sms.daemon
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`settings` Module
+----------------------
+
+.. automodule:: adminsms.sms.settings
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`smsdaemon` Module
+-----------------------
+
+.. automodule:: adminsms.sms.smsdaemon
+    :members:
+    :undoc-members:
+    :show-inheritance:
+

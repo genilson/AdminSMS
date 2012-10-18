@@ -1,0 +1,7 @@
+AdminSMS
+========
+
+.. toctree::
+   :maxdepth: 4
+
+   adminsms

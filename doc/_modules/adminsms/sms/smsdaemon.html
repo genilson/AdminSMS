@@ -1,0 +1,299 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>adminsms.sms.smsdaemon &mdash; AdminSMS 1.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="AdminSMS 1.0.0 documentation" href="../../../index.html" />
+    <link rel="up" title="Código do módulo" href="../../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navegação</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="Índice Geral"
+             accesskey="I">índice</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Índice de Módulos do Python"
+             >módulos</a> |</li>
+        <li><a href="../../../index.html">AdminSMS 1.0.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" accesskey="U">Código do módulo</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Código fonte de adminsms.sms.smsdaemon</h1><div class="highlight"><pre>
+<span class="c">#!/usr/bin/env python</span>
+<span class="c"># coding: utf-8</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">.. moduleauthor:: Genilson Israel da Silva &lt;genilsonisrael@gmail.com&gt;</span>
+
+<span class="sd">:Platform: \*nix</span>
+
+<span class="sd">:Synopsis: This module implements the Daemon funcionalities extended from</span>
+<span class="sd">    :class:`Daemon` that keeps waiting for an incoming callback event.</span>
+
+<span class="sd">Code</span>
+<span class="sd">------</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">import</span> <span class="nn">gammu</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">re</span> <span class="kn">import</span> <span class="n">findall</span>
+<span class="kn">from</span> <span class="nn">daemon</span> <span class="kn">import</span> <span class="n">Daemon</span>
+<span class="kn">from</span> <span class="nn">settings</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">subprocess</span> <span class="kn">import</span> <span class="n">Popen</span><span class="p">,</span> <span class="n">PIPE</span>
+<span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">fdopen</span>
+<span class="kn">from</span> <span class="nn">serial</span> <span class="kn">import</span> <span class="n">Serial</span>
+
+
+<span class="c">#Configuring up the daemon</span>
+<div class="viewcode-block" id="SMSD"><a class="viewcode-back" href="../../../adminsms.sms.html#adminsms.sms.smsdaemon.SMSD">[documentos]</a><span class="k">class</span> <span class="nc">SMSD</span><span class="p">(</span><span class="n">Daemon</span><span class="p">):</span>
+
+    <span class="sd">&#39;&#39;&#39;Creates a daemon that listens to incoming phone notifications.</span>
+<span class="sd">    Extends Daemon</span>
+
+<span class="sd">    :param pidfile: file to keep pid</span>
+<span class="sd">    :type pidfile: str</span>
+<span class="sd">    :param stdin: path to stdin file</span>
+<span class="sd">    :type stdin: str</span>
+<span class="sd">    :param stdout: pato to stdout file</span>
+<span class="sd">    :type stdout: str</span>
+<span class="sd">    :param stderr: path to stderr file</span>
+<span class="sd">    :type stderr: str</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="c">#SMSCs of major phone carriers in Brazil</span>
+    <span class="n">SMSCs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s">&#39;TIM&#39;</span><span class="p">:</span> <span class="s">&#39;+5511831382000&#39;</span><span class="p">,</span>
+        <span class="s">&#39;OI&#39;</span><span class="p">:</span> <span class="s">&#39;+550310000010&#39;</span><span class="p">,</span>
+        <span class="s">&#39;CLARO&#39;</span><span class="p">:</span> <span class="s">&#39;+553184015300&#39;</span><span class="p">,</span>
+        <span class="s">&#39;VIVO&#39;</span><span class="p">:</span> <span class="s">&#39;+550101102010&#39;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+<div class="viewcode-block" id="SMSD.callback"><a class="viewcode-back" href="../../../adminsms.sms.html#adminsms.sms.smsdaemon.SMSD.callback">[documentos]</a>    <span class="k">def</span> <span class="nf">callback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sm</span><span class="p">,</span> <span class="n">type_event</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;This callback receives notification about incoming SMSes,</span>
+<span class="sd">        processeses and replies them with the execution status</span>
+
+<span class="sd">        :param sm: state machine which invoked action</span>
+<span class="sd">        :type sm: :class: `gammu.StateMachine` object</span>
+<span class="sd">        :param type_event: type of action, SMS is the one that matters</span>
+<span class="sd">        :type type_event: string, incoming type</span>
+<span class="sd">        :param data: event data</span>
+<span class="sd">        :type data: dict with sms info</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c"># Folder and location of SMS in storage</span>
+        <span class="n">f</span><span class="p">,</span> <span class="n">l</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s">&#39;Folder&#39;</span><span class="p">],</span> <span class="n">data</span><span class="p">[</span><span class="s">&#39;Location&#39;</span><span class="p">]</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">GetSMS</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">l</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c"># Deleting SMS so SIM storage won&#39;t run out of space</span>
+        <span class="n">sm</span><span class="o">.</span><span class="n">DeleteSMS</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">l</span><span class="p">)</span>
+        <span class="c"># Verifying if the phone is allowed to execute operations</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">[</span><span class="s">&#39;Number&#39;</span><span class="p">]</span> <span class="ow">in</span> <span class="n">ALLOWED_PHONES</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Err: Phone not allowed to run commands: </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span>
+                             <span class="n">data</span><span class="p">[</span><span class="s">&#39;Number&#39;</span><span class="p">])</span>
+        <span class="k">elif</span> <span class="n">type_event</span> <span class="o">!=</span> <span class="s">&#39;SMS&#39;</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Err: Incoming event notification not &#39;</span>
+                             <span class="s">&#39;supported</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Incoming </span><span class="si">%s</span><span class="s"> event notification received.</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span>
+                             <span class="n">type_event</span><span class="p">)</span>
+            <span class="c"># Logging operation</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="s">&#39;Phone: {}</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="s">&#39;Received in: {}</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="s">&#39;Operation (Length: {}): {}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                    <span class="n">data</span><span class="p">[</span><span class="s">&#39;Number&#39;</span><span class="p">],</span>
+                    <span class="n">data</span><span class="p">[</span><span class="s">&#39;DateTime&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%d</span><span class="s">/%m/%Y at %Hh%Mmin%Sseg&#39;</span><span class="p">),</span>
+                    <span class="n">data</span><span class="p">[</span><span class="s">&#39;Length&#39;</span><span class="p">],</span> <span class="n">data</span><span class="p">[</span><span class="s">&#39;Text&#39;</span><span class="p">]))</span>
+
+            <span class="n">saida</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_cmd</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s">&#39;Text&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">send_sms</span><span class="p">(</span><span class="n">sm</span><span class="p">,</span> <span class="n">saida</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="s">&#39;Number&#39;</span><span class="p">])</span>
+
+    <span class="c"># Reads serial output</span></div>
+<div class="viewcode-block" id="SMSD.serial_read"><a class="viewcode-back" href="../../../adminsms.sms.html#adminsms.sms.smsdaemon.SMSD.serial_read">[documentos]</a>    <span class="k">def</span> <span class="nf">serial_read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">s</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Reads from serial after input</span>
+
+<span class="sd">        :param s: serial connection</span>
+<span class="sd">        :type s: :class: `serial.serialposix.Serial` object</span>
+<span class="sd">        :returns: phone answer after input</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">ol</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">ol</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ol</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SMSD.run_cmd"><a class="viewcode-back" href="../../../adminsms.sms.html#adminsms.sms.smsdaemon.SMSD.run_cmd">[documentos]</a>    <span class="k">def</span> <span class="nf">run_cmd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cmd</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Runs cmd in the system  host</span>
+
+<span class="sd">        :param sm: state machine which invoked action</span>
+<span class="sd">        :type sm: :class: `gammu.StateMachine` object</span>
+<span class="sd">        :returns: stderr of command (if errors occurred) or stdout (up to 160</span>
+<span class="sd">        characters or default execution success message instead)</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">process</span> <span class="o">=</span> <span class="n">Popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span>
+                        <span class="n">close_fds</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">out</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">read</span><span class="p">(),</span> <span class="n">process</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">err</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c"># Logging error</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Erro: </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">err</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">err</span>
+        <span class="k">elif</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">160</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">out</span>
+        <span class="k">return</span> <span class="s">&#39;Comando executado com sucesso.</span><span class="se">\n</span><span class="s">Saida muito longa para envio.&#39;</span>
+</div>
+<div class="viewcode-block" id="SMSD.send_sms"><a class="viewcode-back" href="../../../adminsms.sms.html#adminsms.sms.smsdaemon.SMSD.send_sms">[documentos]</a>    <span class="k">def</span> <span class="nf">send_sms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sm</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="n">dest</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Sends sms to phone through :meth:`gammu.StateMachine.SendSMS`</span>
+
+<span class="sd">        :param sm: state machine which invoked action</span>
+<span class="sd">        :type sm: :class: `gammu.StateMachine` object</span>
+<span class="sd">        :param msg: message to be sent</span>
+<span class="sd">        :type msg: string</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="c"># GSM Operator</span>
+        <span class="n">oper</span> <span class="o">=</span> <span class="n">gammu</span><span class="o">.</span><span class="n">GSMNetworks</span><span class="p">[</span><span class="n">sm</span><span class="o">.</span><span class="n">GetNetworkInfo</span><span class="p">()[</span><span class="s">&#39;NetworkCode&#39;</span><span class="p">]]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+        <span class="c"># SMSC configuration</span>
+        <span class="n">smsc_cfg</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s">&#39;Name&#39;</span><span class="p">:</span> <span class="n">oper</span><span class="p">,</span>
+            <span class="s">&#39;Number&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">SMSCs</span><span class="p">[</span><span class="n">oper</span><span class="p">],</span>
+            <span class="s">&#39;Validity&#39;</span><span class="p">:</span> <span class="s">&#39;1H&#39;</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="c"># Message structure</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s">&#39;SMSC&#39;</span><span class="p">:</span> <span class="n">smsc_cfg</span><span class="p">,</span>
+            <span class="s">&#39;Name&#39;</span><span class="p">:</span> <span class="s">&#39;Gammu Reply&#39;</span><span class="p">,</span>
+            <span class="s">&#39;Text&#39;</span><span class="p">:</span> <span class="n">msg</span><span class="p">,</span>
+            <span class="s">&#39;Number&#39;</span><span class="p">:</span> <span class="n">dest</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="c"># Acutally send SMS message</span>
+        <span class="n">sm</span><span class="o">.</span><span class="n">SendSMS</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SMSD.run"><a class="viewcode-back" href="../../../adminsms.sms.html#adminsms.sms.smsdaemon.SMSD.run">[documentos]</a>    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Uses :mod:`gammu` to interact with the phone. Configures incoming</span>
+<span class="sd">        callback notifications and waits for notifications from phone.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="c">#Sets stdout buffer to zero</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="n">fdopen</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="s">&#39;w&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">ser</span> <span class="o">=</span> <span class="n">Serial</span><span class="p">(</span><span class="n">PORT</span><span class="p">,</span> <span class="n">TRANSF</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+        <span class="c"># Setting the SIM card as default storage for SMSes</span>
+        <span class="n">ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;AT+CPMS=&quot;SM&quot;,&quot;SM&quot;,&quot;SM&quot;</span><span class="se">\r</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">answ</span> <span class="o">=</span> <span class="n">findall</span><span class="p">(</span><span class="s">r&#39;(?:.*\r\n(.+)\r\n)$&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">serial_read</span><span class="p">(</span><span class="n">ser</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">answ</span> <span class="o">==</span> <span class="s">&quot;ERROR&quot;</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Err: SIM storage not supported by phone</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="n">ser</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="c"># Create state machine</span>
+        <span class="n">sm</span> <span class="o">=</span> <span class="n">gammu</span><span class="o">.</span><span class="n">StateMachine</span><span class="p">()</span>
+        <span class="c"># Creates .gammurc file</span>
+        <span class="nb">open</span><span class="p">(</span><span class="s">&#39;.gammurc&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;[gammu]</span><span class="se">\n</span><span class="s">&#39;</span>
+                                    <span class="s">&#39;port={}</span><span class="se">\n</span><span class="s">&#39;</span>
+                                    <span class="s">&#39;connection={}</span><span class="se">\n</span><span class="s">&#39;</span>
+                                    <span class="s">&#39;name={}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">PORT</span><span class="p">,</span> <span class="n">CON</span><span class="p">,</span> <span class="n">NAME</span><span class="p">))</span>
+        <span class="c"># Read gammurc (.gammurc)</span>
+        <span class="n">sm</span><span class="o">.</span><span class="n">ReadConfig</span><span class="p">(</span><span class="n">Filename</span><span class="o">=</span><span class="s">&#39;.gammurc&#39;</span><span class="p">)</span>
+        <span class="c"># Initialize state machine and connect to phone</span>
+        <span class="n">sm</span><span class="o">.</span><span class="n">Init</span><span class="p">()</span>
+        <span class="c"># Set callback handler for incoming notifications</span>
+        <span class="n">sm</span><span class="o">.</span><span class="n">SetIncomingCallback</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">callback</span><span class="p">)</span>
+
+        <span class="c"># Enable notifications from incoming SMS.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">sm</span><span class="o">.</span><span class="n">SetIncomingSMS</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">gammu</span><span class="o">.</span><span class="n">ERR_NOTSUPPORTED</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;Err: Incomming SMS notification not supported &#39;</span>
+                             <span class="s">&#39;by phone</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="c"># Keeps communicating with the phone in order to get notification</span>
+        <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">sm</span><span class="o">.</span><span class="n">GetSignalQuality</span><span class="p">()</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Pesquisa rápida</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Ir" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Digite os termos da busca ou o nome de um módulo, classe ou função.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navegação</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="Índice Geral"
+             >índice</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Índice de Módulos do Python"
+             >módulos</a> |</li>
+        <li><a href="../../../index.html">AdminSMS 1.0.0 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Código do módulo</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2012, Genilson Israel da Silva.
+      Criado com <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+adminsms Package
+================
+
+:mod:`adminsms` Module
+----------------------
+
+.. automodule:: adminsms.adminsms
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+Subpackages
+-----------
+
+.. toctree::
+
+    adminsms.sms
+
