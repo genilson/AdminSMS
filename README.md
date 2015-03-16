@@ -8,7 +8,7 @@ Run commands remotely through SMS messages
 ------------------------------------------
 
 > AdminSMS is a daemon utility that listens to events from a phone connected to
-the host and runs commands received through SMS messages.
+the host and runs commands received through SMS messages
 
 
 More information
